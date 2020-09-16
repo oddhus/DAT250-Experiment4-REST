@@ -1,21 +1,19 @@
 package no.hvl.dat110.rest;
 
 import com.google.gson.Gson;
+import no.hvl.dat110.rest.enums.OperationTypes;
 import no.hvl.dat110.rest.enums.StatusResponse;
-import no.hvl.dat110.rest.response.StandardResponse;
-import no.hvl.dat110.rest.todos.Todo;
+import no.hvl.dat110.rest.response.TodoResponse;
+import no.hvl.dat110.rest.entities.Todo;
+import no.hvl.dat110.rest.service.TodoService;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+
 
 import static spark.Spark.*;
 
 
 public class App {
-
-    static List<Todo> todos = null;
 
     public static void main(String[] args) {
 
@@ -25,7 +23,8 @@ public class App {
             port(8080);
         }
 
-        todos = new ArrayList<>();
+        TodoService todoService = new TodoService();
+        todoService.setup();
 
         after((req, res) -> {
             res.type("application/json");
@@ -33,64 +32,49 @@ public class App {
 
         get("/todo/:id", (req, res) -> {
             String id = req.params(":id");
-            Optional<Todo> todo = todos.stream().filter(x -> x.getId().equals(id)).findFirst();
-            if (!todo.isPresent()) {
-                return new Gson()
-                        .toJson(new StandardResponse(StatusResponse.ERROR, "Could not find a todo with the specified id"));
-            }
-
-            return new Gson().toJson(new StandardResponse(StatusResponse.SUCCESS, new Gson().toJsonTree(todo)));
+            return  new TodoResponse(
+                    new Gson().toJsonTree(todoService.getTodoById(id)),
+                    OperationTypes.FIND).toJson();
         });
 
-        get("/todos", (req, res) -> new Gson()
-                .toJson(new StandardResponse(StatusResponse.SUCCESS, new Gson().toJsonTree(todos))));
+        get("/todos", (req, res) -> {
+            List<Todo> todos = todoService.getAllTodos();
+
+            return new Gson()
+                    .toJson(new TodoResponse(new Gson().toJsonTree(todos), OperationTypes.FIND));
+        });
 
         post("/todo", (req, res) -> {
             Gson gson = new Gson();
             Todo todo = gson.fromJson(req.body(), Todo.class);
-            todo.setId(UUID.randomUUID().toString());
-
-            todos.add(todo);
-
-            return new Gson().toJson(new StandardResponse(StatusResponse.SUCCESS, new Gson().toJsonTree(todo)));
+            return  new TodoResponse(
+                    new Gson().toJsonTree(todoService.createTodo(todo)),
+                    OperationTypes.CREATE).toJson();
         });
 
         patch("/todo/:id", (req, res) -> {
             String id = req.params(":id");
-            Optional<Todo> todo = todos.stream().filter(x -> x.getId().equals(id)).findFirst();
+            Todo todo = new Gson().fromJson(req.body(), Todo.class);
 
-            if (!todo.isPresent()) {
-                return new Gson()
-                        .toJson(new StandardResponse(StatusResponse.ERROR, "Could not find a todo with the specified id"));
-            }
-
-            Todo updatedTodo = new Gson().fromJson(req.body(), Todo.class);
-
-            if (updatedTodo.getDescription() != null && !todo.get().getDescription().equals(updatedTodo.getDescription())){
-                todo.get().setDescription(updatedTodo.getDescription());
-            }
-            if (updatedTodo.getTitle() != null && !todo.get().getTitle().equals(updatedTodo.getTitle())){
-                todo.get().setTitle(updatedTodo.getTitle());
-            }
-
-            return new Gson()
-                    .toJson(new StandardResponse(StatusResponse.SUCCESS, new Gson().toJsonTree(todo)));
+            return  new TodoResponse(
+                    new Gson().toJsonTree(todoService.updateTodo(id, todo)),
+                    OperationTypes.UPDATE).toJson();
         });
 
         delete("/todo/:id", (req, res) -> {
             String id = req.params(":id");
-            Optional<Todo> todo = todos.stream().filter(x -> x.getId().equals(id)).findFirst();
+            Boolean deleted = todoService.deleteTodo(id);
 
-            if (!todo.isPresent()) {
+            if (!deleted) {
                 return new Gson()
-                        .toJson(new StandardResponse(StatusResponse.ERROR, "Could not find a todo with the specified id"));
+                        .toJson(new TodoResponse(StatusResponse.ERROR, "Could not deleted the specified todo"));
             }
 
-            todos.remove(todo.get());
-
             return new Gson()
-                    .toJson(new StandardResponse(StatusResponse.SUCCESS, "The todo was successfully deleted"));
+                    .toJson(new TodoResponse(StatusResponse.SUCCESS, "The todo was successfully deleted"));
         });
+
     }
+
 
 }
